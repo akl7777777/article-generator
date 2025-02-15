@@ -1,22 +1,14 @@
 // src/types/index.ts
-export interface Article {
-    topic: string;
-    outline: string;
-    content: string;
-    createdAt: Date;
-    updatedAt: Date;
+export interface APIConfig {
+    url: string;
+    provider: 'openai' | 'custom';
+    model?: string;
+    apiKey: string;
+    headers?: Record<string, string>;
 }
 
 export interface GenerationOptions {
-    useTemplate?: boolean;
-    templateId?: string;
-    language?: 'zh' | 'en';
-    style?: 'academic' | 'blog' | 'news';
-    length?: 'short' | 'medium' | 'long';
-}
-
-export interface GenerationResult {
-    success: boolean;
-    data?: Article;
-    error?: string;
+    apiConfig?: APIConfig;
+    temperature?: number;
+    maxTokens?: number;
 }
