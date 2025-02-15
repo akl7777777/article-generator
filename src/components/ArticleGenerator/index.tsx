@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 import TopicSelector from '../TopicSelector';
 import Editor from '../Editor';
@@ -20,16 +21,28 @@ const ArticleGenerator: React.FC<ArticleGeneratorProps> = ({
     const [content, setContent] = useState<string>('');
     const [isGenerating, setIsGenerating] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-    const [apiKey, setApiKey] = useState<string>('');
+
+    // API 设置状态
+    const [apiSettings, setApiSettings] = useState({
+        provider: 'openai' as 'openai' | 'custom',
+        apiKey: '',
+        apiUrl: 'https://api.openai.com/v1/chat/completions',
+        model: 'gpt-3.5-turbo'
+    });
 
     const { generateOutline, generateContent, isLoading } = useArticleGenerator({
         ...options,
-        apiKey
+        apiConfig: {
+            provider: apiSettings.provider,
+            apiKey: apiSettings.apiKey,
+            url: apiSettings.apiUrl,
+            model: apiSettings.model
+        }
     });
 
     const handleGenerateOutline = async () => {
-        if (!apiKey) {
-            setError('请先输入 OpenAI API Key');
+        if (!apiSettings.apiKey) {
+            setError('请先输入 API Key');
             return;
         }
         setIsGenerating(true);
@@ -46,8 +59,8 @@ const ArticleGenerator: React.FC<ArticleGeneratorProps> = ({
     };
 
     const handleGenerateContent = async () => {
-        if (!apiKey) {
-            setError('请先输入 OpenAI API Key');
+        if (!apiSettings.apiKey) {
+            setError('请先输入 API Key');
             return;
         }
         setIsGenerating(true);
@@ -77,20 +90,89 @@ const ArticleGenerator: React.FC<ArticleGeneratorProps> = ({
 
                 <CardContent>
                     <div className="space-y-4">
-                        {/* API Key 输入 */}
+                        {/* API 设置 */}
                         <div className="p-4 bg-blue-50 rounded-lg">
                             <h3 className="text-sm font-medium text-blue-800 mb-2">
-                                OpenAI API 设置
+                                API 设置
                             </h3>
-                            <Input
-                                type="password"
-                                placeholder="请输入您的 OpenAI API Key"
-                                value={apiKey}
-                                onChange={(e) => setApiKey(e.target.value)}
-                                className="max-w-md"
-                            />
-                            <p className="text-xs text-blue-600 mt-1">
-                                您的 API Key 仅在本地使用，不会被保存或传输
+                            <div className="space-y-4">
+                                <div className="flex gap-4">
+                                    <div className="w-1/3">
+                                        <label className="text-sm text-gray-600 mb-1 block">
+                                            API 提供商
+                                        </label>
+                                        <Select
+                                            value={apiSettings.provider}
+                                            onValueChange={(value: 'openai' | 'custom') => {
+                                                setApiSettings({
+                                                    ...apiSettings,
+                                                    provider: value,
+                                                    apiUrl: value === 'openai'
+                                                        ? 'https://api.openai.com/v1/chat/completions'
+                                                        : ''
+                                                });
+                                            }}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="选择 API 提供商" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="openai">OpenAI</SelectItem>
+                                                <SelectItem value="custom">自定义 API</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className="text-sm text-gray-600 mb-1 block">
+                                            API Key
+                                        </label>
+                                        <Input
+                                            type="password"
+                                            placeholder="请输入 API Key"
+                                            value={apiSettings.apiKey}
+                                            onChange={(e) => setApiSettings({
+                                                ...apiSettings,
+                                                apiKey: e.target.value
+                                            })}
+                                        />
+                                    </div>
+                                </div>
+
+                                {apiSettings.provider === 'custom' && (
+                                    <div className="space-y-2">
+                                        <label className="text-sm text-gray-600 mb-1 block">
+                                            自定义 API 地址
+                                        </label>
+                                        <Input
+                                            placeholder="输入自定义 API 地址"
+                                            value={apiSettings.apiUrl}
+                                            onChange={(e) => setApiSettings({
+                                                ...apiSettings,
+                                                apiUrl: e.target.value
+                                            })}
+                                        />
+                                        <p className="text-xs text-gray-500">
+                                            例如: https://your-api-server.com/v1/chat/completions
+                                        </p>
+                                    </div>
+                                )}
+
+                                <div className="space-y-2">
+                                    <label className="text-sm text-gray-600 mb-1 block">
+                                        模型 {apiSettings.provider === 'custom' && '(可选)'}
+                                    </label>
+                                    <Input
+                                        placeholder="输入模型名称"
+                                        value={apiSettings.model}
+                                        onChange={(e) => setApiSettings({
+                                            ...apiSettings,
+                                            model: e.target.value
+                                        })}
+                                    />
+                                </div>
+                            </div>
+                            <p className="text-xs text-blue-600 mt-2">
+                                您的 API 设置仅在本地使用，不会被保存或传输
                             </p>
                         </div>
 
