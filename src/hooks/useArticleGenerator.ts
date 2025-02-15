@@ -2,56 +2,65 @@
 import { useState, useCallback } from 'react';
 import type { GenerationOptions } from '../types';
 
-const DEFAULT_OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
-const DEFAULT_MODEL = 'gpt-3.5-turbo';
+interface UseArticleGeneratorOptions extends GenerationOptions {
+    apiConfig?: {
+        provider: 'openai' | 'custom';
+        apiKey: string;
+        url: string;
+        model?: string;
+    };
+}
 
-export const useArticleGenerator = (options: GenerationOptions = {}) => {
+export const useArticleGenerator = (options: UseArticleGeneratorOptions = {}) => {
     const [isLoading, setIsLoading] = useState<boolean>(false);
 
-    // 处理API请求的通用函数
-    const makeAPIRequest = async (messages: any[], config: GenerationOptions) => {
-        const apiConfig = config.apiConfig;
-        if (!apiConfig?.apiKey) {
+    const makeAPIRequest = async (messages: any[]): Promise<string> => {
+        if (!options.apiConfig?.apiKey) {
             throw new Error('请提供 API Key');
         }
 
-        const apiUrl = apiConfig.url || DEFAULT_OPENAI_URL;
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
-            ...apiConfig.headers
         };
 
         // 根据不同提供商设置认证头
-        if (apiConfig.provider === 'openai') {
-            headers['Authorization'] = `Bearer ${apiConfig.apiKey}`;
+        if (options.apiConfig.provider === 'openai') {
+            headers['Authorization'] = `Bearer ${options.apiConfig.apiKey}`;
         } else {
-            headers['x-api-key'] = apiConfig.apiKey;
+            // 自定义 API 的认证头设置
+            headers['Authorization'] = options.apiConfig.apiKey;  // 直接使用 API Key 作为令牌
         }
 
-        const response = await fetch(apiUrl, {
+        console.log('Request Headers:', headers); // 调试用
+
+        const response = await fetch(options.apiConfig.url, {
             method: 'POST',
             headers,
             body: JSON.stringify({
-                model: apiConfig.model || DEFAULT_MODEL,
+                model: options.apiConfig.model || 'gpt-3.5-turbo',
                 messages,
-                temperature: config.temperature || 0.7,
-                max_tokens: config.maxTokens || 2000,
+                temperature: 0.7,
+                max_tokens: 2000,
             })
         });
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error?.message || 'API 调用失败');
+            console.error('API Error:', errorData); // 调试用
+            throw new Error(errorData.error?.message || `API 调用失败: ${response.status}`);
         }
 
         const data = await response.json();
+        console.log('API Response:', data); // 调试用
 
-        // 处理不同API返回格式
-        if (apiConfig.provider === 'openai') {
+        // 处理不同的响应格式
+        if (options.apiConfig.provider === 'openai') {
             return data.choices[0].message.content;
         } else {
-            // 自定义API的返回格式处理
-            return data.content || data.text || data.generated_text || data.result;
+            // 支持多种可能的响应格式
+            return data.response || data.content || data.text || data.message || data.result ||
+                (data.choices && data.choices[0]?.message?.content) ||
+                JSON.stringify(data);
         }
     };
 
@@ -66,11 +75,11 @@ export const useArticleGenerator = (options: GenerationOptions = {}) => {
                 content: `请为主题"${topic}"生成一个详细的研究性文章大纲，包含引言、文献综述、研究方法、结果分析和结论等部分。`
             }];
 
-            return await makeAPIRequest(messages, options);
+            return await makeAPIRequest(messages);
         } finally {
             setIsLoading(false);
         }
-    }, [options]);
+    }, [options.apiConfig]);
 
     const generateContent = useCallback(async (
         topic: string,
@@ -86,11 +95,11 @@ export const useArticleGenerator = (options: GenerationOptions = {}) => {
                 content: `请根据以下大纲，为主题"${topic}"生成一篇详细的学术文章：\n\n${outline}`
             }];
 
-            return await makeAPIRequest(messages, options);
+            return await makeAPIRequest(messages);
         } finally {
             setIsLoading(false);
         }
-    }, [options]);
+    }, [options.apiConfig]);
 
     return {
         isLoading,
