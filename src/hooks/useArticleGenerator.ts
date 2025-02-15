@@ -14,7 +14,7 @@ interface UseArticleGeneratorOptions extends GenerationOptions {
 export const useArticleGenerator = (options: UseArticleGeneratorOptions = {}) => {
     const [isLoading, setIsLoading] = useState<boolean>(false);
 
-    const makeAPIRequest = async (messages: any[]): Promise<string> => {
+    const makeAPIRequest = async (messages: any[], maxTokens: number = 4000): Promise<string> => {
         if (!options.apiConfig?.apiKey) {
             throw new Error('请提供 API Key');
         }
@@ -23,44 +23,44 @@ export const useArticleGenerator = (options: UseArticleGeneratorOptions = {}) =>
             'Content-Type': 'application/json',
         };
 
-        // 根据不同提供商设置认证头
         if (options.apiConfig.provider === 'openai') {
             headers['Authorization'] = `Bearer ${options.apiConfig.apiKey}`;
         } else {
-            // 自定义 API 的认证头设置
-            headers['Authorization'] = options.apiConfig.apiKey;  // 直接使用 API Key 作为令牌
+            headers['Authorization'] = options.apiConfig.apiKey;
         }
 
-        console.log('Request Headers:', headers); // 调试用
+        try {
+            const response = await fetch(options.apiConfig.url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    model: options.apiConfig.model || 'gpt-3.5-turbo',
+                    messages,
+                    temperature: 0.7,
+                    max_tokens: maxTokens,
+                    // 添加其他可能有助于生成更长内容的参数
+                    presence_penalty: 0.1,  // 降低重复内容的可能性
+                    frequency_penalty: 0.1, // 鼓励使用更多样的词汇
+                })
+            });
 
-        const response = await fetch(options.apiConfig.url, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                model: options.apiConfig.model || 'gpt-3.5-turbo',
-                messages,
-                temperature: 0.7,
-                max_tokens: 2000,
-            })
-        });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error?.message || `API 调用失败: ${response.status}`);
+            }
 
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            console.error('API Error:', errorData); // 调试用
-            throw new Error(errorData.error?.message || `API 调用失败: ${response.status}`);
-        }
+            const data = await response.json();
 
-        const data = await response.json();
-        console.log('API Response:', data); // 调试用
-
-        // 处理不同的响应格式
-        if (options.apiConfig.provider === 'openai') {
-            return data.choices[0].message.content;
-        } else {
-            // 支持多种可能的响应格式
-            return data.response || data.content || data.text || data.message || data.result ||
-                (data.choices && data.choices[0]?.message?.content) ||
-                JSON.stringify(data);
+            if (options.apiConfig.provider === 'openai') {
+                return data.choices[0].message.content;
+            } else {
+                return data.response || data.content || data.text || data.message || data.result ||
+                    (data.choices && data.choices[0]?.message?.content) ||
+                    JSON.stringify(data);
+            }
+        } catch (error) {
+            console.error('API Request Error:', error);
+            throw error;
         }
     };
 
@@ -72,10 +72,10 @@ export const useArticleGenerator = (options: UseArticleGeneratorOptions = {}) =>
                 content: "你是一个专业的文章大纲生成助手。请为给定的主题生成一个详细的学术风格大纲。"
             }, {
                 role: "user",
-                content: `请为主题"${topic}"生成一个详细的研究性文章大纲，包含引言、文献综述、研究方法、结果分析和结论等部分。`
+                content: `请为主题"${topic}"生成一个详细的研究性文章大纲，包含引言、文献综述、研究方法、结果分析和结论等部分。要求层次分明，每个部分都要有详细的子项目。`
             }];
 
-            return await makeAPIRequest(messages);
+            return await makeAPIRequest(messages, 2000); // 大纲不需要太长
         } finally {
             setIsLoading(false);
         }
@@ -87,15 +87,57 @@ export const useArticleGenerator = (options: UseArticleGeneratorOptions = {}) =>
     ): Promise<string> => {
         setIsLoading(true);
         try {
-            const messages = [{
+            // 将大纲分解成章节
+            const sections = outline.split(/\d+\./g).filter(Boolean);
+            let fullContent = '';
+
+            // 为每个章节生成内容
+            for (let i = 0; i < sections.length; i++) {
+                const section = sections[i].trim();
+                const sectionNumber = i + 1;
+
+                const messages = [{
+                    role: "system",
+                    content: `你是一个专业的学术论文写作助手。请基于大纲生成详细的文章内容。
+要求：
+1. 内容要专业、深入且详实
+2. 使用学术性的语言和表达
+3. 每个观点都要有充分的论述
+4. 保持逻辑性和连贯性
+5. 如果可能，适当引用一些研究或数据支持论点`
+                }, {
+                    role: "user",
+                    content: `这是一篇关于"${topic}"的学术文章的第${sectionNumber}部分。
+请基于以下大纲生成这一部分的详细内容：
+
+${section}
+
+请生成至少1000字的内容，要求内容充实、论述深入、逻辑清晰。每个子项目都要有详细的展开和论述。`
+                }];
+
+                // 为每个章节生成内容
+                const sectionContent = await makeAPIRequest(messages, 4000);
+                fullContent += `\n\n# ${sectionNumber}. ${section.split('\n')[0]}\n\n${sectionContent}`;
+
+                // 如果不是最后一个章节，添加一个短暂的延迟以避免API限制
+                if (i < sections.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+
+            // 最后生成一个总结性的结论
+            const conclusionMessages = [{
                 role: "system",
-                content: "你是一个专业的学术论文写作助手。请根据提供的大纲生成详细的文章内容。"
+                content: "你是一个专业的学术论文写作助手。请为整篇文章生成一个有力的结论。"
             }, {
                 role: "user",
-                content: `请根据以下大纲，为主题"${topic}"生成一篇详细的学术文章：\n\n${outline}`
+                content: `请为这篇关于"${topic}"的文章生成一个总结性的结论，要包含主要发现、研究意义和未来展望。要求结论有力且有见地。`
             }];
 
-            return await makeAPIRequest(messages);
+            const conclusion = await makeAPIRequest(conclusionMessages, 2000);
+            fullContent += `\n\n# 结论\n\n${conclusion}`;
+
+            return fullContent;
         } finally {
             setIsLoading(false);
         }
