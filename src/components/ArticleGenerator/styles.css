@@ -1,0 +1,10 @@
+/*// src/components/ArticleGenerator/styles.css*/
+.article-generator {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.preview-section {
+    border-left: 1px solid #e5e7eb;
+    padding-left: 1rem;
+}
