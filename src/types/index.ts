@@ -12,3 +12,10 @@ export interface GenerationOptions {
     temperature?: number;
     maxTokens?: number;
 }
+
+export interface GenerationProgress {
+    currentSection: number;
+    totalSections: number;
+    sectionTitle: string;
+    status: 'generating' | 'done' | 'error';
+}

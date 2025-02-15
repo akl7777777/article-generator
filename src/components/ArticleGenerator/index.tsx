@@ -11,6 +11,7 @@ import Editor from '../Editor';
 import Preview from '../Preview';
 import { useArticleGenerator } from '../../hooks/useArticleGenerator';
 import type { ArticleGeneratorProps } from './types';
+import GenerationProgress from "../GenerationProgress";
 
 const ArticleGenerator: React.FC<ArticleGeneratorProps> = ({
                                                                defaultTopic = '',
@@ -30,7 +31,7 @@ const ArticleGenerator: React.FC<ArticleGeneratorProps> = ({
         model: 'gpt-3.5-turbo'
     });
 
-    const { generateOutline, generateContent, isLoading } = useArticleGenerator({
+    const { generateOutline, generateContent, isLoading ,progress} = useArticleGenerator({
         ...options,
         apiConfig: {
             provider: apiSettings.provider,
@@ -65,8 +66,10 @@ const ArticleGenerator: React.FC<ArticleGeneratorProps> = ({
         }
         setIsGenerating(true);
         try {
-            const result = await generateContent(topic, outline);
-            setContent(result);
+            await generateContent(topic, outline, (partialContent) => {
+                // 实时更新内容
+                setContent(partialContent);
+            });
             setError(null);
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : '生成失败';
@@ -175,7 +178,10 @@ const ArticleGenerator: React.FC<ArticleGeneratorProps> = ({
                                 您的 API 设置仅在本地使用，不会被保存或传输
                             </p>
                         </div>
-
+                        {/* 添加进度显示 */}
+                        {(isGenerating || progress) && (
+                            <GenerationProgress progress={progress} />
+                        )}
                         {/* 主题选择 */}
                         <div className="p-4 bg-white rounded-lg shadow">
                             <h3 className="text-lg font-semibold mb-2">文章主题</h3>

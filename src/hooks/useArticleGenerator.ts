@@ -1,18 +1,12 @@
 // src/hooks/useArticleGenerator.ts
 import { useState, useCallback } from 'react';
-import type { GenerationOptions } from '../types';
+import {GenerationProgress} from "../types";
 
-interface UseArticleGeneratorOptions extends GenerationOptions {
-    apiConfig?: {
-        provider: 'openai' | 'custom';
-        apiKey: string;
-        url: string;
-        model?: string;
-    };
-}
 
-export const useArticleGenerator = (options: UseArticleGeneratorOptions = {}) => {
-    const [isLoading, setIsLoading] = useState<boolean>(false);
+
+export const useArticleGenerator = (options: any = {}) => {
+    const [isLoading, setIsLoading] = useState(false);
+    const [progress, setProgress] = useState<GenerationProgress | null>(null);
 
     const makeAPIRequest = async (messages: any[], maxTokens: number = 4000): Promise<string> => {
         if (!options.apiConfig?.apiKey) {
@@ -83,7 +77,8 @@ export const useArticleGenerator = (options: UseArticleGeneratorOptions = {}) =>
 
     const generateContent = useCallback(async (
         topic: string,
-        outline: string
+        outline: string,
+        onSectionComplete: (sectionContent: string) => void
     ): Promise<string> => {
         setIsLoading(true);
         try {
@@ -91,10 +86,27 @@ export const useArticleGenerator = (options: UseArticleGeneratorOptions = {}) =>
             const sections = outline.split(/\d+\./g).filter(Boolean);
             let fullContent = '';
 
+            // 更新总章节数
+            setProgress({
+                currentSection: 0,
+                totalSections: sections.length + 1, // +1 for conclusion
+                sectionTitle: '准备生成',
+                status: 'generating'
+            });
+
             // 为每个章节生成内容
             for (let i = 0; i < sections.length; i++) {
                 const section = sections[i].trim();
                 const sectionNumber = i + 1;
+                const sectionTitle = section.split('\n')[0];
+
+                // 更新进度
+                setProgress({
+                    currentSection: sectionNumber,
+                    totalSections: sections.length + 1,
+                    sectionTitle,
+                    status: 'generating'
+                });
 
                 const messages = [{
                     role: "system",
@@ -117,15 +129,27 @@ ${section}
 
                 // 为每个章节生成内容
                 const sectionContent = await makeAPIRequest(messages, 4000);
-                fullContent += `\n\n# ${sectionNumber}. ${section.split('\n')[0]}\n\n${sectionContent}`;
+                const formattedSection = `\n\n# ${sectionNumber}. ${sectionTitle}\n\n${sectionContent}`;
+                fullContent += formattedSection;
 
-                // 如果不是最后一个章节，添加一个短暂的延迟以避免API限制
+                // 通知上层组件更新内容
+                onSectionComplete(fullContent);
+
+                // 如果不是最后一个章节，添加延迟
                 if (i < sections.length - 1) {
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 }
             }
 
-            // 最后生成一个总结性的结论
+            // 更新进度为生成结论
+            setProgress({
+                currentSection: sections.length + 1,
+                totalSections: sections.length + 1,
+                sectionTitle: '生成结论',
+                status: 'generating'
+            });
+
+            // 生成结论
             const conclusionMessages = [{
                 role: "system",
                 content: "你是一个专业的学术论文写作助手。请为整篇文章生成一个有力的结论。"
@@ -135,9 +159,23 @@ ${section}
             }];
 
             const conclusion = await makeAPIRequest(conclusionMessages, 2000);
-            fullContent += `\n\n# 结论\n\n${conclusion}`;
+            const finalContent = fullContent + `\n\n# 结论\n\n${conclusion}`;
 
-            return fullContent;
+            // 通知结论生成完成
+            onSectionComplete(finalContent);
+
+            // 更新进度为完成
+            setProgress({
+                currentSection: sections.length + 1,
+                totalSections: sections.length + 1,
+                sectionTitle: '生成完成',
+                status: 'done'
+            });
+
+            return finalContent;
+        } catch (error) {
+            setProgress(prev => prev ? { ...prev, status: 'error' } : null);
+            throw error;
         } finally {
             setIsLoading(false);
         }
@@ -145,6 +183,7 @@ ${section}
 
     return {
         isLoading,
+        progress,
         generateOutline,
         generateContent
     };
