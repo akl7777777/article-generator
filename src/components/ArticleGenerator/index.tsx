@@ -1,151 +1,178 @@
 // src/components/ArticleGenerator/index.tsx
 import React, { useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
+import { Loader2 } from 'lucide-react';
 import TopicSelector from '../TopicSelector';
 import Editor from '../Editor';
 import Preview from '../Preview';
 import { useArticleGenerator } from '../../hooks/useArticleGenerator';
 import type { ArticleGeneratorProps } from './types';
-import type { Article, GenerationResult } from '../../types';
-import './styles.css';
 
 const ArticleGenerator: React.FC<ArticleGeneratorProps> = ({
                                                                defaultTopic = '',
-                                                               options = {},
-                                                               onGenerate,
-                                                               onError
+                                                               options = {}
                                                            }) => {
-    const [article, setArticle] = useState<Article>({
-        topic: defaultTopic,
-        outline: '',
-        content: '',
-        createdAt: new Date(),
-        updatedAt: new Date()
-    });
+    const [topic, setTopic] = useState<string>(defaultTopic);
+    const [outline, setOutline] = useState<string>('');
+    const [content, setContent] = useState<string>('');
     const [isGenerating, setIsGenerating] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
+    const [apiKey, setApiKey] = useState<string>('');
 
-    const { generateOutline, generateContent } = useArticleGenerator(options);
+    const { generateOutline, generateContent, isLoading } = useArticleGenerator({
+        ...options,
+        apiKey
+    });
 
-    const handleTopicChange = (newTopic: string): void => {
-        setArticle(prev => ({
-            ...prev,
-            topic: newTopic,
-            updatedAt: new Date()
-        }));
-        setError(null);
-    };
-
-    const handleGenerateOutline = async (): Promise<void> => {
-        if (!article.topic) {
-            setError('请先选择文章主题');
+    const handleGenerateOutline = async () => {
+        if (!apiKey) {
+            setError('请先输入 OpenAI API Key');
             return;
         }
-
         setIsGenerating(true);
         try {
-            const result: GenerationResult = await generateOutline(article.topic);
-            if (!result.success || !result.data) {
-                throw new Error(result.error || '生成失败');
-            }
-
-            setArticle(prev => ({
-                ...prev,
-                outline: result.data?.outline || '',
-                updatedAt: new Date()
-            }));
+            const result = await generateOutline(topic);
+            setOutline(result);
             setError(null);
         } catch (err) {
-            const error = err as Error;
-            setError('生成大纲时出错: ' + error.message);
-            onError?.(error);
+            const errorMessage = err instanceof Error ? err.message : '生成失败';
+            setError(errorMessage);
         } finally {
             setIsGenerating(false);
         }
     };
 
-    const handleGenerateContent = async (): Promise<void> => {
-        if (!article.outline) {
-            setError('请先生成文章大纲');
+    const handleGenerateContent = async () => {
+        if (!apiKey) {
+            setError('请先输入 OpenAI API Key');
             return;
         }
-
         setIsGenerating(true);
         try {
-            const result: GenerationResult = await generateContent(article.topic, article.outline);
-            if (!result.success || !result.data) {
-                throw new Error(result.error || '生成失败');
-            }
-
-            setArticle(prev => ({
-                ...prev,
-                content: result.data?.content || '',
-                updatedAt: new Date()
-            }));
+            const result = await generateContent(topic, outline);
+            setContent(result);
             setError(null);
-            onGenerate?.(result.data);
         } catch (err) {
-            const error = err as Error;
-            setError('生成文章内容时出错: ' + error.message);
-            onError?.(error);
+            const errorMessage = err instanceof Error ? err.message : '生成失败';
+            setError(errorMessage);
         } finally {
             setIsGenerating(false);
         }
     };
 
     return (
-        <div className="flex flex-col space-y-4 p-4">
-            <Card>
-                <CardContent className="p-6">
-                    <h1 className="text-2xl font-bold mb-4">专业文章生成器</h1>
+        <div className="container mx-auto px-4 py-8 max-w-6xl">
+            <Card className="bg-gradient-to-br from-white to-gray-50 shadow-lg">
+                <CardHeader className="space-y-1 pb-4">
+                    <CardTitle className="text-3xl font-bold text-gray-900">
+                        专业文章生成器
+                    </CardTitle>
+                    <p className="text-gray-500">
+                        基于人工智能的专业文章智能生成工具
+                    </p>
+                </CardHeader>
 
-                    <TopicSelector
-                        value={article.topic}
-                        onChange={handleTopicChange}
-                    />
+                <CardContent>
+                    <div className="space-y-4">
+                        {/* API Key 输入 */}
+                        <div className="p-4 bg-blue-50 rounded-lg">
+                            <h3 className="text-sm font-medium text-blue-800 mb-2">
+                                OpenAI API 设置
+                            </h3>
+                            <Input
+                                type="password"
+                                placeholder="请输入您的 OpenAI API Key"
+                                value={apiKey}
+                                onChange={(e) => setApiKey(e.target.value)}
+                                className="max-w-md"
+                            />
+                            <p className="text-xs text-blue-600 mt-1">
+                                您的 API Key 仅在本地使用，不会被保存或传输
+                            </p>
+                        </div>
 
-                    <div className="flex space-x-4 mt-4">
-                        <Button
-                            onClick={handleGenerateOutline}
-                            disabled={isGenerating || !article.topic}
-                        >
-                            生成大纲
-                        </Button>
-                        <Button
-                            onClick={handleGenerateContent}
-                            disabled={isGenerating || !article.outline}
-                        >
-                            生成文章
-                        </Button>
-                    </div>
+                        {/* 主题选择 */}
+                        <div className="p-4 bg-white rounded-lg shadow">
+                            <h3 className="text-lg font-semibold mb-2">文章主题</h3>
+                            <TopicSelector
+                                value={topic}
+                                onChange={(newTopic) => {
+                                    setTopic(newTopic);
+                                    setError(null);
+                                }}
+                                disabled={isGenerating}
+                            />
+                        </div>
 
-                    {error && (
-                        <Alert variant="destructive" className="mt-4">
-                            <AlertDescription>{error}</AlertDescription>
-                        </Alert>
-                    )}
+                        {/* 操作按钮 */}
+                        <div className="flex space-x-4">
+                            <Button
+                                onClick={handleGenerateOutline}
+                                disabled={isGenerating || !topic || isLoading}
+                                className="bg-blue-600 hover:bg-blue-700"
+                            >
+                                {(isGenerating || isLoading) ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        生成大纲中...
+                                    </>
+                                ) : '生成大纲'}
+                            </Button>
 
-                    <div className="grid grid-cols-2 gap-4 mt-4">
-                        <Editor
-                            outline={article.outline}
-                            content={article.content}
-                            onOutlineChange={(newOutline) => setArticle(prev => ({
-                                ...prev,
-                                outline: newOutline,
-                                updatedAt: new Date()
-                            }))}
-                            onContentChange={(newContent) => setArticle(prev => ({
-                                ...prev,
-                                content: newContent,
-                                updatedAt: new Date()
-                            }))}
-                        />
-                        <Preview
-                            outline={article.outline}
-                            content={article.content}
-                        />
+                            <Button
+                                onClick={handleGenerateContent}
+                                disabled={isGenerating || !outline || isLoading}
+                                className="bg-green-600 hover:bg-green-700"
+                            >
+                                {(isGenerating || isLoading) ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        生成文章中...
+                                    </>
+                                ) : '生成文章'}
+                            </Button>
+                        </div>
+
+                        {error && (
+                            <Alert variant="destructive">
+                                <AlertDescription>{error}</AlertDescription>
+                            </Alert>
+                        )}
+
+                        {/* 编辑器和预览区 */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
+                                <div className="p-4 bg-white rounded-lg shadow">
+                                    <h3 className="text-lg font-semibold mb-2">大纲</h3>
+                                    <Editor
+                                        value={outline}
+                                        onChange={setOutline}
+                                        disabled={isGenerating}
+                                        placeholder="文章大纲将在这里生成..."
+                                        minHeight="200px"
+                                    />
+                                </div>
+
+                                <div className="p-4 bg-white rounded-lg shadow">
+                                    <h3 className="text-lg font-semibold mb-2">内容</h3>
+                                    <Editor
+                                        value={content}
+                                        onChange={setContent}
+                                        disabled={isGenerating}
+                                        placeholder="文章内容将在这里生成..."
+                                        minHeight="400px"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-white rounded-lg shadow">
+                                <h3 className="text-lg font-semibold mb-2">预览</h3>
+                                <Preview outline={outline} content={content} />
+                            </div>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
